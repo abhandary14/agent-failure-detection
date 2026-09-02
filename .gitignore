@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/transactions.db
+logs/*
+!logs/.gitkeep
+!logs/traces/
+logs/traces/*
+!logs/traces/.gitkeep
+eval/results.csv
+eval/run_log.txt
+CLAUDE.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

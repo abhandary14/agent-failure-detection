@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Business Data Chatbot -- Failure Monitoring Demo</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #e2e2e6;
+    --text: #1a1a1e;
+    --muted: #6b6b74;
+    --user-bubble: #e8f0fe;
+    --clean: #1a7f37;
+    --clean-bg: #e6f7ea;
+    --flagged-high: #b3261e;
+    --flagged-high-bg: #fbe8e6;
+    --flagged-med: #a15c00;
+    --flagged-med-bg: #fdf1dc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .session-field { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  header input {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    width: 90px;
+  }
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .turn { margin-bottom: 22px; }
+  .bubble {
+    padding: 10px 14px;
+    border-radius: 10px;
+    max-width: 85%;
+    line-height: 1.45;
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+  .user .bubble { background: var(--user-bubble); margin-left: auto; }
+  .assistant .bubble { background: var(--panel); border: 1px solid var(--border); }
+  .row { display: flex; }
+  .user .row { justify-content: flex-end; }
+
+  .verdict {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .verdict.CLEAN { background: var(--clean-bg); color: var(--clean); }
+  .verdict.FLAGGED.HIGH { background: var(--flagged-high-bg); color: var(--flagged-high); }
+  .verdict.FLAGGED.MEDIUM { background: var(--flagged-med-bg); color: var(--flagged-med); }
+
+  .details {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .details summary { cursor: pointer; user-select: none; }
+  .toolcall {
+    background: #fafafa;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-top: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .reason { margin-top: 3px; }
+
+  .ground-truth {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .inject-row {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .inject-label { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
+  .inject-btn {
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .inject-btn:hover { border-color: #b0b0b8; color: var(--text); }
+  .inject-btn:disabled { opacity: 0.5; cursor: default; }
+
+  .turn.corrupted { margin-top: -8px; padding-left: 18px; border-left: 2px solid var(--border); }
+
+  #inputRow {
+    border-top: 1px solid var(--border);
+    background: var(--panel);
+    padding: 14px 20px;
+    display: flex;
+    gap: 10px;
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  #questionInput {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  #sendBtn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  #sendBtn:disabled { opacity: 0.5; cursor: default; }
+  .pending { color: var(--muted); font-style: italic; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Business Data Chatbot</h1>
+  <span style="font-size:12px;color:var(--muted)">Failure monitoring demo -- each response is checked live by the flagging layer</span>
+  <div class="session-field">
+    <label for="sessionUserId">Session user</label>
+    <input id="sessionUserId" value="U0001">
+  </div>
+</header>
+
+<div id="log"></div>
+
+<div id="inputRow">
+  <input id="questionInput" placeholder="Ask a business question, e.g. &quot;what is my account balance?&quot;" autofocus>
+  <button id="sendBtn">Send</button>
+</div>
+
+<script>
+const log = document.getElementById('log');
+const questionInput = document.getElementById('questionInput');
+const sendBtn = document.getElementById('sendBtn');
+const sessionUserIdInput = document.getElementById('sessionUserId');
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function addUserTurn(question) {
+  const turn = el('div', 'turn user');
+  const row = el('div', 'row');
+  row.appendChild(el('div', 'bubble', question));
+  turn.appendChild(row);
+  log.appendChild(turn);
+  log.scrollTop = log.scrollHeight;
+}
+
+function addPendingTurn() {
+  const turn = el('div', 'turn assistant');
+  turn.appendChild(el('div', 'pending', 'Thinking...'));
+  log.appendChild(turn);
+  log.scrollTop = log.scrollHeight;
+  return turn;
+}
+
+function renderVerdictBadge(verdict) {
+  const badge = el('span', `verdict ${verdict.status} ${verdict.severity || ''}`.trim());
+  if (verdict.status === 'CLEAN') {
+    badge.textContent = 'CLEAN';
+  } else {
+    badge.textContent = `FLAGGED (${verdict.severity})`;
+  }
+  return badge;
+}
+
+const INJECTION_LABELS = {
+  'wrong_tool': 'Wrong tool',
+  'wrong_argument:date_shift': 'Wrong date range',
+  'wrong_argument:wrong_id': 'Wrong ID',
+  'wrong_argument:wrong_limit': 'Wrong limit',
+  'access_violation': 'Access violation',
+  'numerical_distortion': 'Numerical distortion',
+};
+
+function renderAssistantTurn(turn, data, traceId, sessionUserId) {
+  turn.innerHTML = '';
+  const row = el('div', 'row');
+  row.appendChild(el('div', 'bubble', data.trace.final_response || '(no response)'));
+  turn.appendChild(row);
+
+  turn.appendChild(renderVerdictBadge(data.verdict));
+
+  if (data.verdict.status === 'FLAGGED') {
+    const reasonsBox = el('div', 'reason');
+    for (const [check, reason] of Object.entries(data.verdict.reasons)) {
+      reasonsBox.appendChild(el('div', null, `• ${check}: ${reason}`));
+    }
+    turn.appendChild(reasonsBox);
+  }
+
+  if (data.ground_truth) {
+    const gt = el('div', 'ground-truth');
+    gt.textContent = `Injected: ${data.ground_truth.detail}`;
+    turn.appendChild(gt);
+  }
+
+  const details = el('details', 'details');
+  const summary = el('summary', null, `${data.trace.tool_calls.length} tool call(s), ${data.trace.total_latency_ms} ms`);
+  details.appendChild(summary);
+  for (const call of data.trace.tool_calls) {
+    const box = el('div', 'toolcall');
+    box.textContent = `${call.name}(${JSON.stringify(call.arguments)})\n-> ${JSON.stringify(call.result)}`;
+    details.appendChild(box);
+  }
+  turn.appendChild(details);
+
+  if (data.available_injections && data.available_injections.length > 0) {
+    const injectRow = el('div', 'inject-row');
+    injectRow.appendChild(el('span', 'inject-label', 'Simulate a failure:'));
+    for (const label of data.available_injections) {
+      const btn = el('button', 'inject-btn', INJECTION_LABELS[label] || label);
+      btn.addEventListener('click', () => runInjection(traceId, label, sessionUserId, turn));
+      injectRow.appendChild(btn);
+    }
+    turn.appendChild(injectRow);
+  }
+
+  log.scrollTop = log.scrollHeight;
+}
+
+async function runInjection(traceId, injectionLabel, sessionUserId, turn) {
+  const buttons = turn.querySelectorAll('.inject-btn');
+  buttons.forEach(b => b.disabled = true);
+
+  try {
+    const resp = await fetch('/inject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trace_id: traceId,
+        injection_label: injectionLabel,
+        session_user_id: sessionUserId,
+      }),
+    });
+    const data = await resp.json();
+
+    const resultTurn = el('div', 'turn assistant corrupted');
+    log.appendChild(resultTurn);
+    if (!resp.ok) {
+      resultTurn.appendChild(el('div', 'bubble', `Injection error: ${data.error || resp.statusText}`));
+    } else {
+      renderAssistantTurn(resultTurn, data, traceId, sessionUserId);
+    }
+    log.scrollTop = log.scrollHeight;
+  } finally {
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+async function send() {
+  const question = questionInput.value.trim();
+  const sessionUserId = sessionUserIdInput.value.trim();
+  if (!question || !sessionUserId) return;
+
+  questionInput.value = '';
+  sendBtn.disabled = true;
+  addUserTurn(question);
+  const pendingTurn = addPendingTurn();
+
+  try {
+    const resp = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, session_user_id: sessionUserId }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      pendingTurn.innerHTML = '';
+      pendingTurn.appendChild(el('div', 'bubble', `Error: ${data.error || resp.statusText}`));
+    } else {
+      renderAssistantTurn(pendingTurn, data, data.trace.trace_id, sessionUserId);
+    }
+  } catch (err) {
+    pendingTurn.innerHTML = '';
+    pendingTurn.appendChild(el('div', 'bubble', `Request failed: ${err}`));
+  } finally {
+    sendBtn.disabled = false;
+    questionInput.focus();
+  }
+}
+
+sendBtn.addEventListener('click', send);
+questionInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') send();
+});
+</script>
+
+</body>
+</html>
