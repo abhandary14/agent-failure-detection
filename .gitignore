@@ -18,3 +18,6 @@ Thumbs.db
 .vscode/
 .idea/
 DEPLOYMENT_PLAN.md
+
+/docs/*.jpg
+/docs/*.html

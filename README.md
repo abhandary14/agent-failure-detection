@@ -283,5 +283,36 @@ implemented yet:
    integrated) should stay explicit, since the whole point of this
    project is demonstrating the former.
 
+3. **Caching, at two independent layers.**
+   - *LLM response cache*: key on `hash(system_prompt + question)` and
+     skip the Ollama round-trip (the dominant cost, several seconds to
+     tens of seconds on CPU inference) for a repeated identical question.
+     Mainly useful during development/demoing and for iterating on the
+     flagging logic without re-paying LLM latency each time - it does
+     *not* help `run_validation.py`'s actual metrics, since those need
+     fresh baseline traces to mean anything.
+   - *Tool-result cache*: key on `(tool_name, sorted(arguments))` and
+     skip the SQLite query on a repeat call. The absolute time saved is
+     small (SQLite reads are already ~1ms against this dataset), but
+     it's a legitimate production-monitoring pattern worth demonstrating,
+     and it's the more interesting layer for this project specifically
+     because of how it interacts with the flagging system: each
+     `ToolCallRecord` in a `Trace` would gain a `from_cache: bool` field,
+     so a trace stays honest about what actually happened (a cached
+     result is not the same event as a fresh query, even when the value
+     is identical) rather than silently presenting every logged call as
+     if it hit the database.
+   - *Invalidation*: the synthetic DB (`data/transactions.db`) is static
+     within a run - nothing in the current app writes to it after
+     `data/generate_synthetic_data.py` runs once. The only realistic way
+     the data changes today is someone re-running that generator while
+     the server is up, so invalidation would key off the DB file itself
+     changing on disk (e.g. its mtime), clearing the tool-result cache
+     wholesale rather than attempting fine-grained per-row invalidation
+     - there's no live write path (new transactions, processed refunds,
+     etc.) for finer-grained invalidation to react to yet. Adding one
+     would be materially new functionality beyond caching itself, not
+     assumed here.
+
 > [!NOTE]
 > I would like to declare the use of AI tools, specifically Claude Code for generating content for this readme.
